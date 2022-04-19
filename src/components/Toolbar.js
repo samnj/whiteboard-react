@@ -1,15 +1,22 @@
 import React from "react"
 import Button from "./Button.js"
-import { useCanvasContext } from "./CanvasContext.js"
 
 const Toolbar = () => {
+  const toolbar = [
+    "pencil",
+    "eraser",
+    "line",
+    "clear",
+    "undo",
+    "redo",
+    "redraw",
+  ]
+
   return (
     <div>
-      <Button text={"pencil"} />
-      <Button text={"eraser"} />
-      <Button text={"clear"} />
-      <Button text={"undo"} />
-      <Button text={"redo"} />
+      {toolbar.map((tool) => {
+        return <Button key={tool} text={tool} />
+      })}
     </div>
   )
 }

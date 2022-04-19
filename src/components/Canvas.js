@@ -10,6 +10,7 @@ const Canvas = () => {
     stopDrawing,
     resumeDrawing,
     initCanvas,
+    tmpCanvasRef,
   } = useCanvasContext()
 
   useEffect(() => {
@@ -17,14 +18,18 @@ const Canvas = () => {
   }, [])
 
   return (
-    <canvas
-      onMouseDown={mouseDown}
-      onMouseMove={mouseMove}
-      onMouseUp={mouseUp}
-      onMouseOut={stopDrawing}
-      onMouseEnter={resumeDrawing}
-      ref={canvasRef}
-    />
+    <div style={{ position: "relative" }}>
+      <canvas
+        onMouseDown={mouseDown}
+        onMouseMove={mouseMove}
+        onMouseUp={mouseUp}
+        onMouseOut={stopDrawing}
+        onMouseEnter={resumeDrawing}
+        ref={canvasRef}
+        style={{ position: "absolute", zIndex: 10 }}
+      />
+      <canvas ref={tmpCanvasRef} style={{ position: "absolute", zIndex: 5 }} />
+    </div>
   )
 }
 

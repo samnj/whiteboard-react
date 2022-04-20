@@ -26,9 +26,9 @@ const Canvas = () => {
         onMouseOut={stopDrawing}
         onMouseEnter={resumeDrawing}
         ref={canvasRef}
-        style={{ position: "absolute", zIndex: 10 }}
+        style={{ position: "absolute", zIndex: 2 }}
       />
-      <canvas ref={tmpCanvasRef} style={{ position: "absolute", zIndex: 5 }} />
+      <canvas ref={tmpCanvasRef} style={{ position: "absolute", zIndex: 1 }} />
     </div>
   )
 }

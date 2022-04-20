@@ -1,31 +1,82 @@
 import React, {
   useRef,
   useState,
-  useEffect,
   useContext,
   createContext,
+  useEffect,
+  useReducer,
 } from "react"
+
+import isEqual from "lodash.isequal"
 
 const CanvasContext = createContext()
 
 export const CanvasProvider = (props) => {
   const canvasRef = useRef(null)
-  const [ctx, setCtx] = useState({})
+  const [ctx, setCtx] = useState(null)
 
+  // A canvas layer used for drawings that require too many redraws,
+  // aka straight lines preview
   const tmpCanvasRef = useRef(null)
-  const [tmpCtx, setTmpCtx] = useState({})
+  const [tmpCtx, setTmpCtx] = useState(null)
 
-  const [isMouseDown, setIsMouseDown] = useState(false)
-  const [isMoving, setIsMoving] = useState(false)
+  const isMouseDownRef = useRef(false)
+  const isMovingRef = useRef(false)
 
   const [pointerPos, setPointerPos] = useState([])
   const [prevPointerPos, setPrevPointerPos] = useState([])
 
   const [tool, setTool] = useState("pencil")
 
-  const [strokes, setStrokes] = useState([])
-  const [dots, setDots] = useState([])
-  const [lines, setLines] = useState([])
+  const initialState = {
+    strokes: [],
+    history: [],
+    undoHistory: [],
+  }
+
+  const ACTIONS = {
+    ADD_STROKE: "add_stroke",
+    UPDATE_HISTORY: "update_history",
+    UNDO: "undo",
+    REDO: "redo",
+  }
+
+  const historyReducer = (prevState, action) => {
+    switch (action.type) {
+      case ACTIONS.ADD_STROKE:
+        return {
+          ...prevState,
+          strokes: [...prevState.strokes, action.payload],
+        }
+      case ACTIONS.UPDATE_HISTORY:
+        return {
+          ...prevState,
+          history: [...prevState.history, [prevState.strokes]],
+          strokes: [],
+        }
+      case ACTIONS.UNDO:
+        return {
+          ...prevState,
+          undoHistory: [...prevState.undoHistory, [...prevState.history].pop()],
+          history: [...prevState.history].slice(0, -1),
+        }
+      case ACTIONS.REDO:
+        return {
+          ...prevState,
+          history: [...prevState.history, [...prevState.undoHistory].pop()],
+          undoHistory: [...prevState.undoHistory].slice(0, -1),
+        }
+      default:
+        return prevState
+    }
+  }
+
+  const [state, dispatch] = useReducer(historyReducer, initialState)
+
+  useEffect(() => {
+    if (!ctx) return
+    reDraw()
+  }, [state.undoHistory])
 
   const initCanvas = () => {
     const canvas = canvasRef.current
@@ -51,50 +102,43 @@ export const CanvasProvider = (props) => {
     setTmpCtx(tmpContext)
   }
 
-  useEffect(() => {
-    if (lines.length > 0) reDraw()
-  }, [lines])
-
   const mouseDown = (e) => {
-    setIsMouseDown(true)
+    isMouseDownRef.current = true
     setPointerPos(getPos(e))
     setPrevPointerPos(getPos(e))
   }
 
   const mouseMove = (e) => {
-    if (!isMouseDown) return
+    if (!isMouseDownRef.current) return
 
-    setIsMoving(true)
+    isMovingRef.current = true
     setPointerPos(getPos(e))
     if (tool === "pencil") {
-      draw(prevPointerPos, pointerPos)
-      setStrokes((strokes) => [...strokes, [prevPointerPos, pointerPos]])
+      draw(prevPointerPos, pointerPos, ctx, true)
     } else if (tool === "eraser") {
       erase()
     } else if (tool === "line") {
       clearTmpCanvas()
-      drawLine()
-
+      draw(prevPointerPos, pointerPos, tmpCtx, false)
       return
     }
     setPrevPointerPos(pointerPos)
   }
 
   const mouseUp = () => {
-    if (!isMoving && isMouseDown) {
+    if (!isMovingRef.current && isMouseDownRef.current) {
       if (tool === "pencil") {
-        drawDot(pointerPos)
-        setDots((dots) => [...dots, pointerPos])
+        draw(prevPointerPos, pointerPos, ctx)
       } else if (tool === "eraser") {
         erase()
       }
     }
-
-    if (tool === "line") {
-      setLines((lines) => [...lines, [prevPointerPos, pointerPos]])
+    if (tool === "line" && !isEqual(prevPointerPos, pointerPos)) {
+      draw(prevPointerPos, pointerPos, ctx, true)
       clearTmpCanvas()
     }
     stopDrawing()
+    dispatch({ type: ACTIONS.UPDATE_HISTORY })
   }
 
   const getPos = (e) => {
@@ -102,35 +146,13 @@ export const CanvasProvider = (props) => {
     return [offsetX, offsetY]
   }
 
-  const draw = (A, B) => {
-    ctx.beginPath()
-    ctx.moveTo(A[0], A[1])
-    ctx.lineTo(B[0], B[1])
-    ctx.stroke()
-  }
-
-  const reDraw = () => {
-    const canvas = canvasRef.current
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    strokes.forEach((stroke) => draw(stroke[0], stroke[1]))
-    dots.forEach((dot) => drawDot(dot))
-    lines.forEach((line) => {
-      draw(line[0], line[1])
-    })
-  }
-
-  const drawDot = (center) => {
-    ctx.beginPath()
-    ctx.arc(center[0], center[1], ctx.lineWidth / 2, 0, 2 * Math.PI)
-    ctx.fill()
-  }
-
-  const drawLine = () => {
-    tmpCtx.beginPath()
-    tmpCtx.moveTo(prevPointerPos[0], prevPointerPos[1])
-    tmpCtx.lineTo(pointerPos[0], pointerPos[1])
-    tmpCtx.stroke()
+  const draw = (A, B, context, saveStroke) => {
+    context.beginPath()
+    context.moveTo(A[0], A[1])
+    context.lineTo(B[0], B[1])
+    context.stroke()
+    if (!saveStroke) return
+    dispatch({ type: ACTIONS.ADD_STROKE, payload: [A, B] })
   }
 
   const erase = () => {
@@ -142,9 +164,6 @@ export const CanvasProvider = (props) => {
   const clearCanvas = () => {
     const canvas = canvasRef.current
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    setStrokes([])
-    setDots([])
-    setLines([])
   }
 
   const clearTmpCanvas = () => {
@@ -152,9 +171,32 @@ export const CanvasProvider = (props) => {
     tmpCtx.clearRect(0, 0, tmpCanvas.width, tmpCanvas.height)
   }
 
+  const reDraw = () => {
+    const canvas = canvasRef.current
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    let buffer = []
+    for (let i = 0; i < state.history.length; i++) {
+      state.history[i].forEach((element) => {
+        buffer = [...buffer, ...element]
+      })
+    }
+    buffer.forEach((drawing) => draw(drawing[0], drawing[1], ctx, false))
+  }
+
+  const undo = () => {
+    if (!state.history.length) return
+    dispatch({ type: ACTIONS.UNDO })
+  }
+
+  const redo = () => {
+    if (!state.undoHistory.length) return
+    dispatch({ type: ACTIONS.REDO })
+  }
+
   const stopDrawing = () => {
-    setIsMouseDown(false)
-    setIsMoving(false)
+    isMouseDownRef.current = false
+    isMovingRef.current = false
   }
 
   const resumeDrawing = (e) => {
@@ -177,6 +219,8 @@ export const CanvasProvider = (props) => {
         clearCanvas,
         reDraw,
         tmpCanvasRef,
+        undo,
+        redo,
       }}
     >
       {props.children}

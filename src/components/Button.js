@@ -2,7 +2,7 @@ import React from "react"
 import { useCanvasContext } from "./CanvasContext.js"
 
 const Button = ({ text }) => {
-  const { setTool, clearCanvas, reDraw } = useCanvasContext()
+  const { setTool, clearCanvas, reDraw, undo, redo } = useCanvasContext()
 
   const performAction = () => {
     if (text === "pencil" || text === "eraser" || text === "line") {
@@ -11,6 +11,10 @@ const Button = ({ text }) => {
       clearCanvas()
     } else if (text === "redraw") {
       reDraw()
+    } else if (text === "undo") {
+      undo()
+    } else if (text === "redo") {
+      redo()
     }
   }
 

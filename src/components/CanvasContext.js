@@ -13,20 +13,24 @@ const CanvasContext = createContext()
 
 export const CanvasProvider = (props) => {
   const canvasRef = useRef(null)
-  const [ctx, setCtx] = useState(null)
+  const ctxRef = useRef(null)
 
   // A canvas layer used for drawings that require too many redraws,
   // aka straight lines preview
   const tmpCanvasRef = useRef(null)
-  const [tmpCtx, setTmpCtx] = useState(null)
+  const tmpCtxRef = useRef(null)
 
   const isMouseDownRef = useRef(false)
   const isMovingRef = useRef(false)
 
-  const [pointerPos, setPointerPos] = useState([])
-  const [prevPointerPos, setPrevPointerPos] = useState([])
+  const [pointerPos, setPointerPos] = useState({})
+  const [prevPointerPos, setPrevPointerPos] = useState({})
 
   const [tool, setTool] = useState("pencil")
+  const [style, setStyle] = useState({
+    color: "black",
+    prevColor: "black",
+  })
 
   const initialState = {
     strokes: [],
@@ -74,32 +78,28 @@ export const CanvasProvider = (props) => {
   const [state, dispatch] = useReducer(historyReducer, initialState)
 
   useEffect(() => {
-    if (!ctx) return
+    if (!ctxRef.current) return
     reDraw()
   }, [state.undoHistory])
 
   const initCanvas = () => {
-    const canvas = canvasRef.current
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
-    canvas.style.cursor = "crosshair"
+    canvasRef.current.width = window.innerWidth
+    canvasRef.current.height = window.innerHeight
+    canvasRef.current.style.cursor = "crosshair"
 
-    const context = canvas.getContext("2d")
-    context.lineWidth = 6
-    context.lineCap = "round"
-    context.lineJoin = "round"
-    setCtx(context)
+    ctxRef.current = canvasRef.current.getContext("2d")
+    ctxRef.current.lineWidth = 5
+    ctxRef.current.lineCap = "round"
+    ctxRef.current.lineJoin = "round"
 
-    const tmpCanvas = tmpCanvasRef.current
-    tmpCanvas.width = window.innerWidth
-    tmpCanvas.height = window.innerHeight
-    tmpCanvas.style.cursor = "crosshair"
+    tmpCanvasRef.current.width = window.innerWidth
+    tmpCanvasRef.current.height = window.innerHeight
+    tmpCanvasRef.current.style.cursor = "crosshair"
 
-    const tmpContext = tmpCanvas.getContext("2d")
-    tmpContext.lineWidth = 6
-    tmpContext.lineCap = "round"
-    tmpContext.lineJoin = "round"
-    setTmpCtx(tmpContext)
+    tmpCtxRef.current = tmpCanvasRef.current.getContext("2d")
+    tmpCtxRef.current.lineWidth = 5
+    tmpCtxRef.current.lineCap = "round"
+    tmpCtxRef.current.lineJoin = "round"
   }
 
   const mouseDown = (e) => {
@@ -110,32 +110,24 @@ export const CanvasProvider = (props) => {
 
   const mouseMove = (e) => {
     if (!isMouseDownRef.current) return
-
     isMovingRef.current = true
     setPointerPos(getPos(e))
-    if (tool === "pencil") {
-      draw(prevPointerPos, pointerPos, ctx, true)
-    } else if (tool === "eraser") {
-      erase()
-    } else if (tool === "line") {
+    if (tool === "line") {
       clearTmpCanvas()
-      draw(prevPointerPos, pointerPos, tmpCtx, false)
+      draw(prevPointerPos, pointerPos, tmpCtxRef.current, false, style)
       return
     }
+    draw(prevPointerPos, pointerPos, ctxRef.current, true, style)
     setPrevPointerPos(pointerPos)
   }
 
   const mouseUp = () => {
     if (!isMovingRef.current && isMouseDownRef.current) {
-      if (tool === "pencil") {
-        draw(prevPointerPos, pointerPos, ctx)
-      } else if (tool === "eraser") {
-        erase()
-      }
+      draw(prevPointerPos, pointerPos, ctxRef.current, true, style)
     }
     if (tool === "line" && !isEqual(prevPointerPos, pointerPos)) {
-      draw(prevPointerPos, pointerPos, ctx, true)
       clearTmpCanvas()
+      draw(prevPointerPos, pointerPos, ctxRef.current, true, style)
     }
     stopDrawing()
     dispatch({ type: ACTIONS.UPDATE_HISTORY })
@@ -143,37 +135,35 @@ export const CanvasProvider = (props) => {
 
   const getPos = (e) => {
     const { offsetX, offsetY } = e.nativeEvent
-    return [offsetX, offsetY]
+    return { x: offsetX, y: offsetY }
   }
 
-  const draw = (A, B, context, saveStroke) => {
+  const draw = (pointA, pointB, context, saveStroke, styleConfig) => {
     context.beginPath()
-    context.moveTo(A[0], A[1])
-    context.lineTo(B[0], B[1])
+    context.moveTo(pointA.x, pointA.y)
+    context.lineTo(pointB.x, pointB.y)
+    context.strokeStyle = styleConfig.color
     context.stroke()
     if (!saveStroke) return
-    dispatch({ type: ACTIONS.ADD_STROKE, payload: [A, B] })
-  }
-
-  const erase = () => {
-    const squareX = pointerPos[0] - 15
-    const squareY = pointerPos[1] - 15
-    ctx.clearRect(squareX, squareY, 30, 30)
+    dispatch({
+      type: ACTIONS.ADD_STROKE,
+      payload: { pointA, pointB, styleConfig },
+    })
   }
 
   const clearCanvas = () => {
     const canvas = canvasRef.current
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctxRef.current.clearRect(0, 0, canvas.width, canvas.height)
   }
 
   const clearTmpCanvas = () => {
     const tmpCanvas = tmpCanvasRef.current
-    tmpCtx.clearRect(0, 0, tmpCanvas.width, tmpCanvas.height)
+    tmpCtxRef.current.clearRect(0, 0, tmpCanvas.width, tmpCanvas.height)
   }
 
   const reDraw = () => {
     const canvas = canvasRef.current
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctxRef.current.clearRect(0, 0, canvas.width, canvas.height)
 
     let buffer = []
     for (let i = 0; i < state.history.length; i++) {
@@ -181,7 +171,15 @@ export const CanvasProvider = (props) => {
         buffer = [...buffer, ...element]
       })
     }
-    buffer.forEach((drawing) => draw(drawing[0], drawing[1], ctx, false))
+    buffer.forEach((drawing) =>
+      draw(
+        drawing.pointA,
+        drawing.pointB,
+        ctxRef.current,
+        false,
+        drawing.styleConfig
+      )
+    )
   }
 
   const undo = () => {
@@ -205,6 +203,10 @@ export const CanvasProvider = (props) => {
     }
   }
 
+  const handleWidth = ({ target }) => {
+    ctxRef.current.lineWidth = target.value
+  }
+
   return (
     <CanvasContext.Provider
       value={{
@@ -216,11 +218,14 @@ export const CanvasProvider = (props) => {
         resumeDrawing,
         initCanvas,
         setTool,
+        style,
+        setStyle,
         clearCanvas,
         reDraw,
         tmpCanvasRef,
         undo,
         redo,
+        handleWidth,
       }}
     >
       {props.children}
